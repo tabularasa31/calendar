@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'passpass'
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    restart: on-failure
+    networks:
+      - default
+
+  migrate:
+    container_name: migrate
+    build:
+      context: .
+      dockerfile: build/migrations/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - default
+
+  rabbitmq:
+    image: rabbitmq:3.11-alpine
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    restart: on-failure
+    networks:
+      - default
+
+  calendar:
+    container_name: calendar
+    build:
+      context: .
+      dockerfile: build/calendar/Dockerfile
+    ports:
+      - '8080:8080'
+      - '50051:50051'
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_started
+    networks:
+      - default
+
+  scheduler:
+    container_name: scheduler
+    build:
+      context: .
+      dockerfile: build/calendar_scheduler/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    networks:
+      - default
+
+  sender:
+    container_name: sender
+    build:
+      context: .
+      dockerfile: build/calendar_sender/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    networks:
+      - default
+
+  integration_tests:
+    build:
+      context: .
+      dockerfile: build/tests/Dockerfile
+    command: "go test -tags integration ./tests/integration/..."
+    depends_on:
+      calendar:
+        condition: service_started
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
